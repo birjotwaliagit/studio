@@ -2,62 +2,14 @@
 "use client";
 
 import React, { useState, useCallback } from 'react';
-import type { ImageFile, OptimizationSettings, OptimizationFormat } from '@/types';
+import type { ImageFile, OptimizationSettings } from '@/types';
 import { ImageUploader } from './image-uploader';
 import { FileList } from './file-list';
 import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
 import { Download, ImageIcon } from 'lucide-react';
-
-async function processImage(file: ImageFile, settings: OptimizationSettings): Promise<ImageFile> {
-  return new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.src = file.dataUrl;
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return reject(new Error('Failed to get canvas context'));
-
-      let targetWidth = file.originalWidth;
-      let targetHeight = file.originalHeight;
-      const aspectRatio = file.originalWidth / file.originalHeight;
-
-      if (settings.width && settings.height) {
-        targetWidth = settings.width;
-        targetHeight = settings.height;
-      } else if (settings.width) {
-        targetWidth = settings.width;
-        targetHeight = Math.round(settings.width / aspectRatio);
-      } else if (settings.height) {
-        targetHeight = settings.height;
-        targetWidth = Math.round(settings.height * aspectRatio);
-      }
-      
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-
-      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
-      
-      const quality = settings.format === 'png' ? undefined : settings.quality / 100;
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) return reject(new Error('Failed to create blob'));
-          const optimizedDataUrl = URL.createObjectURL(blob);
-          resolve({
-            ...file,
-            optimizedDataUrl,
-            optimizedSize: blob.size,
-          });
-        },
-        `image/${settings.format}`,
-        quality
-      );
-    };
-    image.onerror = reject;
-  });
-}
+import { processImageWithSharp } from '@/app/actions';
 
 function downloadFile(url: string, filename: string) {
   const a = document.createElement('a');
@@ -66,7 +18,6 @@ function downloadFile(url: string, filename: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 export function ImageOptix() {
@@ -118,17 +69,24 @@ export function ImageOptix() {
 
   const handleBatchProcessAndDownload = async () => {
     setIsProcessing(true);
-    const processedFiles = await Promise.all(
-      files.map(file => processImage(file, settings))
-    );
     
-    processedFiles.forEach(file => {
-      if (file.optimizedDataUrl) {
+    const downloadPromises = files.map(async (file) => {
+      const result = await processImageWithSharp({
+        dataUrl: file.dataUrl,
+        settings,
+        originalWidth: file.originalWidth,
+        originalHeight: file.originalHeight
+      });
+
+      if (result.success && result.data?.optimizedDataUrl) {
         const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
         const newName = `${originalName}.${settings.format}`;
-        downloadFile(file.optimizedDataUrl, newName);
+        downloadFile(result.data.optimizedDataUrl, newName);
       }
+      // You might want to add error handling here, e.g. show a toast
     });
+    
+    await Promise.all(downloadPromises);
 
     setIsProcessing(false);
   };

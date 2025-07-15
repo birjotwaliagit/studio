@@ -3,11 +3,12 @@
 
 import React, { useState, useEffect } from 'react';
 import type { ImageFile, OptimizationSettings } from '@/types';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Card } from '@/components/ui/card';
 import Image from 'next/image';
 import { formatBytes } from '@/lib/utils';
 import { ChevronsRight, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { processImageWithSharp } from '@/app/actions';
+import { useToast } from '@/hooks/use-toast';
 
 interface PreviewAreaProps {
   activeFile: ImageFile | null;
@@ -28,6 +29,7 @@ function PreviewPanel({ title, imageSrc, width, height, size, isLoading }: { tit
             height={400}
             className="object-contain max-w-full max-h-full h-auto w-auto"
             style={{ maxHeight: 'calc(100vh - 200px)'}}
+            unoptimized // Necessary for base64-encoded images in next/image
           />
         )}
         {!isLoading && !imageSrc && (
@@ -46,73 +48,66 @@ function PreviewPanel({ title, imageSrc, width, height, size, isLoading }: { tit
   );
 }
 
-
 export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
-  const [optimizedUrl, setOptimizedUrl] = useState<string | null>(null);
-  const [optimizedSize, setOptimizedSize] = useState<number | null>(null);
+  const [optimizedData, setOptimizedData] = useState<{ url: string; size: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!activeFile) {
-      setOptimizedUrl(null);
-      setOptimizedSize(null);
+      setOptimizedData(null);
       return;
     }
 
     setIsLoading(true);
     let isCancelled = false;
-    
-    const image = new window.Image();
-    image.src = activeFile.dataUrl;
-    image.onload = () => {
-      if (isCancelled) return;
-      
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        setIsLoading(false);
-        return;
-      }
-      
-      let targetWidth = activeFile.originalWidth;
-      let targetHeight = activeFile.originalHeight;
-      const aspectRatio = activeFile.originalWidth / activeFile.originalHeight;
 
-      if (settings.width && settings.height) {
-        targetWidth = settings.width;
-        targetHeight = settings.height;
-      } else if (settings.width) {
-        targetWidth = settings.width;
-        targetHeight = Math.round(settings.width / aspectRatio);
-      } else if (settings.height) {
-        targetHeight = settings.height;
-        targetWidth = Math.round(settings.height * aspectRatio);
-      }
-      
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
+    const process = async () => {
+      try {
+        const result = await processImageWithSharp({
+          dataUrl: activeFile.dataUrl,
+          settings,
+          originalWidth: activeFile.originalWidth,
+          originalHeight: activeFile.originalHeight,
+        });
 
-      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
-      
-      const quality = settings.format === 'png' ? undefined : settings.quality / 100;
+        if (isCancelled) return;
 
-      canvas.toBlob(blob => {
-        if (isCancelled || !blob) {
-            setIsLoading(false);
-            return;
+        if (result.success && result.data) {
+          setOptimizedData({
+            url: result.data.optimizedDataUrl,
+            size: result.data.optimizedSize,
+          });
+        } else {
+          setOptimizedData(null);
+          toast({
+            variant: 'destructive',
+            title: 'Preview Failed',
+            description: result.error,
+          });
         }
-        if (optimizedUrl) URL.revokeObjectURL(optimizedUrl);
-        setOptimizedUrl(URL.createObjectURL(blob));
-        setOptimizedSize(blob.size);
-        setIsLoading(false);
-      }, `image/${settings.format}`, quality);
+      } catch (error) {
+        if (isCancelled) return;
+        setOptimizedData(null);
+        toast({
+            variant: 'destructive',
+            title: 'An Error Occurred',
+            description: 'Could not generate preview.',
+        });
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
     };
+
+    const timeoutId = setTimeout(process, 300); // Debounce processing
 
     return () => {
       isCancelled = true;
-      if (optimizedUrl) URL.revokeObjectURL(optimizedUrl);
+      clearTimeout(timeoutId);
     };
-  }, [activeFile, settings]);
+  }, [activeFile, settings, toast]);
 
   if (!activeFile) {
     return (
@@ -124,23 +119,34 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
     );
   }
 
-  const sizeChange = activeFile && optimizedSize !== null ? (optimizedSize - activeFile.size) / activeFile.size * 100 : 0;
+  const sizeChange = optimizedData ? (optimizedData.size - activeFile.size) / activeFile.size * 100 : 0;
   
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-6">
         <div className="flex w-full items-start justify-center gap-6">
-            <PreviewPanel title="Original" imageSrc={activeFile.dataUrl} width={activeFile.originalWidth} height={activeFile.originalHeight} size={activeFile.size} />
+            <PreviewPanel 
+              title="Original" 
+              imageSrc={activeFile.dataUrl} 
+              width={activeFile.originalWidth} 
+              height={activeFile.originalHeight} 
+              size={activeFile.size} 
+            />
             
             <div className="flex flex-col items-center justify-center h-full pt-24 mt-12">
                 <ChevronsRight className="w-12 h-12 text-muted-foreground" />
-                {optimizedSize !== null && (
+                {optimizedData && !isLoading && (
                     <div className={`mt-2 text-lg font-bold ${sizeChange > 0 ? 'text-destructive' : 'text-green-500'}`}>
-                        {sizeChange.toFixed(1)}%
+                        {sizeChange > 0 ? '+' : ''}{sizeChange.toFixed(1)}%
                     </div>
                 )}
             </div>
 
-            <PreviewPanel title="Optimized" imageSrc={optimizedUrl ?? undefined} width={optimizedUrl ? undefined : 0} height={0} size={optimizedSize ?? undefined} isLoading={isLoading} />
+            <PreviewPanel 
+              title="Optimized" 
+              imageSrc={optimizedData?.url} 
+              size={optimizedData?.size} 
+              isLoading={isLoading} 
+            />
         </div>
     </div>
   );
