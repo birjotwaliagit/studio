@@ -22,7 +22,7 @@ const POSTIMAGE_SIZE_LIMIT_BYTES = 30 * 1024 * 1024; // 30 MB
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
-  format: z.enum(['jpeg', 'png', 'webp']),
+  format: z.enum(['jpeg', 'png', 'webp', 'avif']),
   quality: z.number().min(1).max(100).int(),
   width: z.number().min(1).int().nullable(),
   height: z.number().min(1).int().nullable(),
@@ -90,6 +90,9 @@ async function optimizeImage(
       break;
     case 'webp':
       processedBuffer = await image.webp({ quality }).toBuffer();
+      break;
+    case 'avif':
+      processedBuffer = await image.avif({ quality }).toBuffer();
       break;
     default:
       // This should not be reached due to Zod validation

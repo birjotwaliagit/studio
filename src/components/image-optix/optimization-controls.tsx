@@ -43,9 +43,10 @@ export function OptimizationControls({ settings, setSettings, activeFile, disabl
               <SelectValue placeholder="Select format" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="avif">AVIF</SelectItem>
+              <SelectItem value="webp">WEBP</SelectItem>
               <SelectItem value="jpeg">JPEG</SelectItem>
               <SelectItem value="png">PNG</SelectItem>
-              <SelectItem value="webp">WEBP</SelectItem>
             </SelectContent>
           </Select>
         </div>
