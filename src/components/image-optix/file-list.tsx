@@ -37,16 +37,23 @@ export function FileList({ files, onSelectFile, onRemoveFile, onClearAll, active
       <ScrollArea className="flex-1 pr-3">
         <div className="space-y-2">
           {files.map((file, index) => (
-            <button
+            <div
               key={file.id}
-              onClick={() => onSelectFile(index)}
-              disabled={disabled}
+              onClick={() => !disabled && onSelectFile(index)}
+              role="button"
+              tabIndex={disabled ? -1 : 0}
+              onKeyDown={(e) => {
+                if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  onSelectFile(index);
+                }
+              }}
               className={cn(
-                "flex items-center w-full p-2 rounded-md text-left transition-colors",
+                "flex items-center w-full p-2 rounded-md text-left transition-colors cursor-pointer",
                 activeIndex === index
                   ? "bg-primary/10 ring-2 ring-primary"
                   : "hover:bg-muted",
-                disabled && "cursor-not-allowed"
+                disabled && "cursor-not-allowed opacity-50"
               )}
             >
               <Image
@@ -73,7 +80,7 @@ export function FileList({ files, onSelectFile, onRemoveFile, onClearAll, active
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
-            </button>
+            </div>
           ))}
         </div>
       </ScrollArea>
