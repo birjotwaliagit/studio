@@ -9,7 +9,8 @@ import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
 import { Download, ImageIcon } from 'lucide-react';
-import { processImageWithSharp } from '@/app/actions';
+import { processImagesForZip } from '@/app/actions';
+import { useToast } from '@/hooks/use-toast';
 
 function downloadFile(url: string, filename: string) {
   const a = document.createElement('a');
@@ -30,13 +31,15 @@ export function ImageOptix() {
     height: null,
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const { toast } = useToast();
 
   const activeFile = activeIndex !== null ? files[activeIndex] : null;
 
   const handleFilesAdded = useCallback((newFiles: ImageFile[]) => {
+    const newFileIndex = files.length;
     setFiles(f => [...f, ...newFiles]);
     if (activeIndex === null && newFiles.length > 0) {
-      setActiveIndex(files.length);
+      setActiveIndex(newFileIndex);
     }
   }, [activeIndex, files.length]);
 
@@ -48,7 +51,7 @@ export function ImageOptix() {
       } else if (activeIndex !== null) {
         const currentSelectedFile = currentFiles[activeIndex];
         if (currentSelectedFile.id === idToRemove) {
-          setActiveIndex(0);
+          setActiveIndex(newFiles.length > 0 ? 0 : null);
         } else {
           const newIndex = newFiles.findIndex(f => f.id === currentSelectedFile.id);
           setActiveIndex(newIndex);
@@ -70,23 +73,18 @@ export function ImageOptix() {
   const handleBatchProcessAndDownload = async () => {
     setIsProcessing(true);
     
-    const downloadPromises = files.map(async (file) => {
-      const result = await processImageWithSharp({
-        dataUrl: file.dataUrl,
-        settings,
-        originalWidth: file.originalWidth,
-        originalHeight: file.originalHeight
-      });
+    const result = await processImagesForZip(files, settings);
 
-      if (result.success && result.data?.optimizedDataUrl) {
-        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-        const newName = `${originalName}.${settings.format}`;
-        downloadFile(result.data.optimizedDataUrl, newName);
-      }
-      // You might want to add error handling here, e.g. show a toast
-    });
-    
-    await Promise.all(downloadPromises);
+    if (result.success && result.data?.zipData) {
+      const url = `data:application/zip;base64,${result.data.zipData}`;
+      downloadFile(url, `ImageOptix-${Date.now()}.zip`);
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Batch Processing Failed",
+        description: result.error || "An unknown error occurred while creating the zip file.",
+      });
+    }
 
     setIsProcessing(false);
   };

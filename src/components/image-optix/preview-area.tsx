@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import Image from 'next/image';
 import { formatBytes } from '@/lib/utils';
 import { ChevronsRight, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { processImageWithSharp } from '@/app/actions';
+import { processImageForPreview } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 
 interface PreviewAreaProps {
@@ -64,7 +64,7 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
 
     const process = async () => {
       try {
-        const result = await processImageWithSharp({
+        const result = await processImageForPreview({
           dataUrl: activeFile.dataUrl,
           settings,
           originalWidth: activeFile.originalWidth,
