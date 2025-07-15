@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
   title: 'ImageOptix by Birjot',
-  description: 'AI-powered image optimization for peak performance.',
+  description: 'High-performance image optimization and conversion.',
 };
 
 export default function RootLayout({
