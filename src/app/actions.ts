@@ -8,12 +8,11 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rate-limiter';
 import { headers } from 'next/headers';
 import JSZip from 'jszip';
+import { BATCH_LIMIT, RATE_LIMIT_MAX_REQUESTS } from '@/config/limits';
 
 
 // In-memory store for jobs. In a real app, use a database or a service like Redis.
 const jobStore = new Map<string, Job>();
-
-const BATCH_LIMIT = 50;
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
@@ -255,4 +254,11 @@ export async function getJobStatus(jobId: string): Promise<Job | null> {
   }
 
   return job;
+}
+
+export async function getAppLimits() {
+    return {
+        batchLimit: BATCH_LIMIT,
+        rateLimit: RATE_LIMIT_MAX_REQUESTS,
+    };
 }

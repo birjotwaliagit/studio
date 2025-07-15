@@ -1,7 +1,7 @@
 
+import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from '@/config/limits';
+
 const requests = new Map<string, { count: number; startTime: number }>();
-const LIMIT = 100; // 100 requests
-const DURATION = 60 * 1000; // 1 minute in milliseconds
 
 export function checkRateLimit(ip: string): { success: boolean } {
   const now = Date.now();
@@ -12,13 +12,13 @@ export function checkRateLimit(ip: string): { success: boolean } {
     return { success: true };
   }
 
-  if (now - userRequests.startTime > DURATION) {
+  if (now - userRequests.startTime > RATE_LIMIT_WINDOW_MS) {
     // Reset window
     requests.set(ip, { count: 1, startTime: now });
     return { success: true };
   }
 
-  if (userRequests.count < LIMIT) {
+  if (userRequests.count < RATE_LIMIT_MAX_REQUESTS) {
     userRequests.count++;
     return { success: true };
   }
@@ -30,8 +30,8 @@ export function checkRateLimit(ip: string): { success: boolean } {
 setInterval(() => {
   const now = Date.now();
   for (const [ip, data] of requests.entries()) {
-    if (now - data.startTime > DURATION) {
+    if (now - data.startTime > RATE_LIMIT_WINDOW_MS) {
       requests.delete(ip);
     }
   }
-}, DURATION);
+}, RATE_LIMIT_WINDOW_MS);

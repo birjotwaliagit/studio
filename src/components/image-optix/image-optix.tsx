@@ -9,7 +9,7 @@ import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
 import { Download, ImageIcon, Loader2, CheckCircle2, AlertTriangle, FileArchive, Info } from 'lucide-react';
-import { createProcessImagesJob, getJobStatus } from '@/app/actions';
+import { createProcessImagesJob, getJobStatus, getAppLimits } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -32,6 +32,15 @@ export function ImageOptix() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const { toast } = useToast();
+  const [limits, setLimits] = useState<{ batchLimit: number; rateLimit: number } | null>(null);
+
+  useEffect(() => {
+    async function fetchLimits() {
+      const appLimits = await getAppLimits();
+      setLimits(appLimits);
+    }
+    fetchLimits();
+  }, []);
 
   const activeFile = activeIndex !== null ? files[activeIndex] : null;
 
@@ -268,8 +277,14 @@ export function ImageOptix() {
                 </AccordionTrigger>
                 <AccordionContent>
                     <ul className="text-xs text-muted-foreground space-y-2 list-disc pl-4">
-                        <li>Max **50 images** per batch.</li>
-                        <li>Max **100 jobs** per minute per user.</li>
+                        {limits ? (
+                            <>
+                                <li>Max **{limits.batchLimit} images** per batch.</li>
+                                <li>Max **{limits.rateLimit} jobs** per minute per user.</li>
+                            </>
+                        ) : (
+                            <li>Loading limits...</li>
+                        )}
                         <li>Large files or batches may fail due to server processing time and memory limits.</li>
                     </ul>
                 </AccordionContent>
