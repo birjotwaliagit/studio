@@ -7,9 +7,6 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rate-limiter';
 import { headers } from 'next/headers';
-import axios from 'axios';
-import FormData from 'form-data';
-import crypto from 'crypto';
 import JSZip from 'jszip';
 
 
@@ -17,8 +14,6 @@ import JSZip from 'jszip';
 const jobStore = new Map<string, Job>();
 
 const BATCH_LIMIT = 50;
-const POSTIMAGES_ENDPOINT = "https://postimg.cc/json";
-const POSTIMAGE_SIZE_LIMIT_BYTES = 30 * 1024 * 1024; // 30 MB
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
@@ -27,23 +22,6 @@ const optimizationSettingsSchema = z.object({
   width: z.number().min(1).int().nullable(),
   height: z.number().min(1).int().nullable(),
 });
-
-// Scrape a valid token from postimages.org. In a real app, this should be cached.
-async function getPostimagesToken(): Promise<string> {
-    try {
-        const response = await axios.get('https://postimages.org', {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        const tokenMatch = response.data.match(/token['"]?\s*:\s*['"](\w{32})/);
-        if (tokenMatch && tokenMatch[1]) {
-            return tokenMatch[1];
-        }
-        throw new Error('Could not find postimages token');
-    } catch (error) {
-        console.error("Failed to fetch postimages token:", error);
-        throw new Error('Could not fetch postimages token');
-    }
-}
 
 async function optimizeImage(
   fileBuffer: Buffer, 
@@ -155,50 +133,6 @@ export async function processImageForPreview(formData: FormData) {
   }
 }
 
-async function processAndUploadIndividually(jobId: string, files: File[], settings: OptimizationSettings) {
-    const publicUrls: string[] = [];
-    const token = await getPostimagesToken();
-    const session = crypto.randomBytes(16).toString('hex');
-
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        jobStore.set(jobId, {
-            status: 'processing', progress: i, total: files.length,
-            info: `Optimizing ${file.name}...`
-        });
-        
-        const fileBuffer = Buffer.from(await file.arrayBuffer());
-        const processedBuffer = await optimizeImage(fileBuffer, settings);
-
-        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-        const newName = `${originalName}.${settings.format}`;
-        
-        jobStore.set(jobId, {
-            status: 'uploading', progress: i, total: files.length,
-            info: `Uploading ${newName}...`
-        });
-        
-        const form = new FormData();
-        form.append('token', token);
-        form.append('upload_session', session);
-        form.append('file', processedBuffer, newName);
-        form.append('numfiles', '1');
-
-        const uploadResponse = await axios.post(POSTIMAGES_ENDPOINT, form, {
-            headers: form.getHeaders(),
-            maxContentLength: Infinity, maxBodyLength: Infinity,
-        });
-
-        if (uploadResponse.data.status !== 'OK') {
-            throw new Error(`Postimages upload failed for ${newName}: ${uploadResponse.data.error || 'Unknown error'}`);
-        }
-        publicUrls.push(uploadResponse.data.url);
-    }
-    
-    return publicUrls;
-}
-
 async function processAndZip(jobId: string, files: File[], settings: OptimizationSettings): Promise<string> {
     const zip = new JSZip();
     for (let i = 0; i < files.length; i++) {
@@ -217,7 +151,7 @@ async function processAndZip(jobId: string, files: File[], settings: Optimizatio
     }
     
     jobStore.set(jobId, {
-        status: 'uploading', progress: files.length, total: files.length,
+        status: 'processing', progress: files.length, total: files.length,
         info: `Compressing into zip...`
     });
     
@@ -263,33 +197,9 @@ export async function createProcessImagesJob(
     (async () => {
         try {
             const startTime = Date.now();
-            let useZipFallback = false;
-
-            // First, check if any file will be oversized
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                jobStore.set(jobId, {
-                    status: 'processing', progress: i, total: files.length,
-                    info: `Analyzing ${file.name}...`
-                });
-                const fileBuffer = Buffer.from(await file.arrayBuffer());
-                const processedBuffer = await optimizeImage(fileBuffer, settings);
-                if (processedBuffer.byteLength > POSTIMAGE_SIZE_LIMIT_BYTES) {
-                    useZipFallback = true;
-                    console.log(`File ${file.name} exceeds 30MB after optimization. Using zip fallback for job ${jobId}.`);
-                    break;
-                }
-            }
             
-            let result: { type: 'urls' | 'zip'; data: string[] | string };
-
-            if (useZipFallback) {
-                const zipDataUrl = await processAndZip(jobId, files, settings);
-                result = { type: 'zip', data: zipDataUrl };
-            } else {
-                const urls = await processAndUploadIndividually(jobId, files, settings);
-                result = { type: 'urls', data: urls };
-            }
+            const zipDataUrl = await processAndZip(jobId, files, settings);
+            const result: { type: 'zip'; data: string } = { type: 'zip', data: zipDataUrl };
           
             jobStore.set(jobId, {
                 status: 'completed',

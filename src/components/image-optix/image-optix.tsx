@@ -8,12 +8,10 @@ import { FileList } from './file-list';
 import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
-import { Download, ImageIcon, Loader2, CheckCircle2, AlertTriangle, Copy, FileArchive } from 'lucide-react';
+import { Download, ImageIcon, Loader2, CheckCircle2, AlertTriangle, FileArchive } from 'lucide-react';
 import { createProcessImagesJob, getJobStatus } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
-import { Input } from '../ui/input';
-import { ScrollArea } from '../ui/scroll-area';
 
 export function ImageOptix() {
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -163,7 +161,7 @@ export function ImageOptix() {
       return (
         <>
           <Download className="mr-2 h-5 w-5" />
-          Process & Get Files ({files.length})
+          Process & Download ({files.length})
         </>
       );
     }
@@ -177,7 +175,7 @@ export function ImageOptix() {
           </>
         );
       case 'processing':
-      case 'uploading':
+      case 'uploading': // Keep uploading for zip creation phase
         return (
           <>
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -188,45 +186,16 @@ export function ImageOptix() {
         return (
           <>
             <Download className="mr-2 h-5 w-5" />
-            Process & Get Files ({files.length})
+            Process & Download ({files.length})
           </>
         );
     }
   }
   
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Copied to clipboard!" });
-  }
-
   const renderJobResult = () => {
       if (!job || job.status !== 'completed' || !job.result) return null;
 
       const { type, data } = job.result;
-
-      if (type === 'urls' && Array.isArray(data)) {
-          return (
-              <div className="mt-4 p-4 border rounded-lg bg-green-500/10 text-green-700 dark:text-green-300">
-                  <div className="flex items-center mb-2">
-                      <CheckCircle2 className="mr-2 h-5 w-5" />
-                      <h3 className="font-semibold">Upload Complete!</h3>
-                  </div>
-                  <p className="text-sm mb-3">Your public links are ready. Anyone with the link can view the file.</p>
-                  <ScrollArea className="h-40">
-                    <div className="space-y-2 pr-4">
-                      {data.map((url, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                            <Input readOnly value={url} className="bg-background text-xs h-8"/>
-                            <Button size="icon" className="h-8 w-8" onClick={() => handleCopy(url)}>
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-              </div>
-          )
-      }
 
       if (type === 'zip' && typeof data === 'string') {
         return (
