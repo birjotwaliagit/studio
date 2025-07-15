@@ -269,7 +269,7 @@ export function ImageOptix() {
                 <AccordionContent>
                     <ul className="text-xs text-muted-foreground space-y-2 list-disc pl-4">
                         <li>Max **50 images** per batch.</li>
-                        <li>Max **10 jobs** per minute per user.</li>
+                        <li>Max **100 jobs** per minute per user.</li>
                         <li>Large files or batches may fail due to server processing time and memory limits.</li>
                     </ul>
                 </AccordionContent>

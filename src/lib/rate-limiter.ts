@@ -1,6 +1,6 @@
 
 const requests = new Map<string, { count: number; startTime: number }>();
-const LIMIT = 10; // 10 requests
+const LIMIT = 100; // 100 requests
 const DURATION = 60 * 1000; // 1 minute in milliseconds
 
 export function checkRateLimit(ip: string): { success: boolean } {
