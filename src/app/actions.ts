@@ -48,8 +48,10 @@ async function getPostimagesToken(): Promise<string> {
 async function optimizeImage(
   fileBuffer: Buffer, 
   settings: OptimizationSettings
-) {
-  let image = sharp(fileBuffer, { animated: settings.format === 'gif' });
+): Promise<Buffer> {
+  // For animated GIFs, we need to tell sharp to handle all frames.
+  const isAnimated = settings.format === 'gif';
+  let image = sharp(fileBuffer, { animated: isAnimated });
   
   const metadata = await image.metadata();
   const originalWidth = metadata.width || 1;
@@ -80,38 +82,38 @@ async function optimizeImage(
 
   const { format, quality } = settings;
   
-  let processedBuffer: Buffer;
-  switch(format) {
+  // Chain the format conversion. Apply quality only where applicable.
+  switch (format) {
     case 'jpeg':
-      processedBuffer = await image.jpeg({ quality }).toBuffer();
-      break;
-    case 'png':
-      processedBuffer = await image.png().toBuffer();
+      image.jpeg({ quality });
       break;
     case 'webp':
-      processedBuffer = await image.webp({ quality }).toBuffer();
+      image.webp({ quality });
       break;
     case 'avif':
-      processedBuffer = await image.avif({ quality }).toBuffer();
-      break;
-    case 'tiff':
-      processedBuffer = await image.tiff({ quality }).toBuffer();
-      break;
-    case 'bmp':
-      processedBuffer = await image.bmp().toBuffer();
-      break;
-    case 'gif':
-      processedBuffer = await image.gif().toBuffer();
+      image.avif({ quality });
       break;
     case 'heif':
-      processedBuffer = await image.heif({ quality }).toBuffer();
+      image.heif({ quality });
       break;
+    case 'tiff':
+       image.tiff({ quality });
+       break;
+    case 'png':
+      image.png(); // No quality setting for lossless PNG
+      break;
+    case 'gif':
+      image.gif();
+      break;
+    case 'bmp':
+       image.bmp();
+       break;
     default:
       // This should not be reached due to Zod validation
-      throw new Error('Unsupported format');
+      throw new Error(`Unsupported format: ${format}`);
   }
   
-  return processedBuffer;
+  return image.toBuffer();
 }
 
 
