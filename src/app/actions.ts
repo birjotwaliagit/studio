@@ -6,6 +6,9 @@ import sharp from 'sharp';
 import JSZip from 'jszip';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
+import { checkRateLimit } from '@/lib/rate-limiter';
+import { headers } from 'next/headers';
+
 
 // In-memory store for jobs. In a real app, use a database or a service like Redis.
 const jobStore = new Map<string, Job>();
@@ -116,6 +119,12 @@ export async function createProcessImagesJob(
   formData: FormData,
 ): Promise<{ jobId?: string; error?: string }> {
   try {
+    const ip = headers().get('x-forwarded-for') ?? '127.0.0.1';
+    const limitCheck = checkRateLimit(ip);
+    if (!limitCheck.success) {
+      return { error: 'Too many requests. Please try again in a minute.' };
+    }
+    
     const files = formData.getAll('files') as File[];
     const settingsString = formData.get('settings') as string;
 
