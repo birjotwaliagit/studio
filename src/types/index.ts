@@ -27,7 +27,10 @@ export type Job = {
   status: JobStatus;
   progress: number;
   total: number;
-  result?: string[]; // Array of public URLs from postimages
+  result?: {
+    type: 'urls' | 'zip';
+    data: string[] | string;
+  };
   error?: string;
   info?: string;
 }

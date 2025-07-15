@@ -8,7 +8,7 @@ import { FileList } from './file-list';
 import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
-import { Download, ImageIcon, Loader2, Link as LinkIcon, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
+import { Download, ImageIcon, Loader2, CheckCircle2, AlertTriangle, Copy, FileArchive } from 'lucide-react';
 import { createProcessImagesJob, getJobStatus } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
@@ -47,8 +47,8 @@ export function ImageOptix() {
 
           if (currentJob.status === 'completed' && currentJob.result) {
             toast({
-              title: "Upload Complete",
-              description: "Your public links are ready.",
+              title: "Processing Complete",
+              description: "Your files are ready.",
             });
           } else if (currentJob.status === 'failed') {
             toast({
@@ -162,8 +162,8 @@ export function ImageOptix() {
     if (!isProcessing || !job) {
       return (
         <>
-          <LinkIcon className="mr-2 h-5 w-5" />
-          Process & Get Links ({files.length})
+          <Download className="mr-2 h-5 w-5" />
+          Process & Get Files ({files.length})
         </>
       );
     }
@@ -187,8 +187,8 @@ export function ImageOptix() {
       default:
         return (
           <>
-            <LinkIcon className="mr-2 h-5 w-5" />
-            Process & Get Links ({files.length})
+            <Download className="mr-2 h-5 w-5" />
+            Process & Get Files ({files.length})
           </>
         );
     }
@@ -200,9 +200,11 @@ export function ImageOptix() {
   }
 
   const renderJobResult = () => {
-      if (!job) return null;
+      if (!job || job.status !== 'completed' || !job.result) return null;
 
-      if (job.status === 'completed' && job.result) {
+      const { type, data } = job.result;
+
+      if (type === 'urls' && Array.isArray(data)) {
           return (
               <div className="mt-4 p-4 border rounded-lg bg-green-500/10 text-green-700 dark:text-green-300">
                   <div className="flex items-center mb-2">
@@ -212,7 +214,7 @@ export function ImageOptix() {
                   <p className="text-sm mb-3">Your public links are ready. Anyone with the link can view the file.</p>
                   <ScrollArea className="h-40">
                     <div className="space-y-2 pr-4">
-                      {job.result.map((url, index) => (
+                      {data.map((url, index) => (
                         <div key={index} className="flex items-center gap-2">
                             <Input readOnly value={url} className="bg-background text-xs h-8"/>
                             <Button size="icon" className="h-8 w-8" onClick={() => handleCopy(url)}>
@@ -226,19 +228,39 @@ export function ImageOptix() {
           )
       }
 
-      if (job.status === 'failed') {
-          return (
-            <div className="mt-4 p-4 border rounded-lg bg-destructive/10 text-destructive dark:text-red-400">
-                <div className="flex items-center mb-2">
-                    <AlertTriangle className="mr-2 h-5 w-5" />
-                    <h3 className="font-semibold">Job Failed</h3>
-                </div>
-                <p className="text-sm">{job.error || "An unknown error occurred."}</p>
-            </div>
-          )
+      if (type === 'zip' && typeof data === 'string') {
+        return (
+          <div className="mt-4 p-4 border rounded-lg bg-green-500/10 text-green-700 dark:text-green-300">
+              <div className="flex items-center mb-2">
+                  <CheckCircle2 className="mr-2 h-5 w-5" />
+                  <h3 className="font-semibold">Download Ready!</h3>
+              </div>
+              <p className="text-sm mb-3">Your optimized images have been compressed into a zip file.</p>
+              <Button asChild className="w-full">
+                <a href={data} download="optimized-images.zip">
+                  <FileArchive className="mr-2 h-5 w-5" />
+                  Download .zip file
+                </a>
+              </Button>
+          </div>
+        )
       }
 
       return null;
+  }
+
+  const renderJobFailure = () => {
+    if (!job || job.status !== 'failed') return null;
+
+    return (
+      <div className="mt-4 p-4 border rounded-lg bg-destructive/10 text-destructive dark:text-red-400">
+          <div className="flex items-center mb-2">
+              <AlertTriangle className="mr-2 h-5 w-5" />
+              <h3 className="font-semibold">Job Failed</h3>
+          </div>
+          <p className="text-sm">{job.error || "An unknown error occurred."}</p>
+      </div>
+    );
   }
 
   return (
@@ -278,6 +300,7 @@ export function ImageOptix() {
             {getButtonContent()}
           </Button>
           {renderJobResult()}
+          {renderJobFailure()}
         </div>
       </aside>
       <main className="flex items-center justify-center p-8 bg-background overflow-hidden">

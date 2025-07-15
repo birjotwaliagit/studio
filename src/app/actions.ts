@@ -10,6 +10,7 @@ import { headers } from 'next/headers';
 import axios from 'axios';
 import FormData from 'form-data';
 import crypto from 'crypto';
+import JSZip from 'jszip';
 
 
 // In-memory store for jobs. In a real app, use a database or a service like Redis.
@@ -17,6 +18,7 @@ const jobStore = new Map<string, Job>();
 
 const BATCH_LIMIT = 50;
 const POSTIMAGES_ENDPOINT = "https://postimg.cc/json";
+const POSTIMAGE_SIZE_LIMIT_BYTES = 30 * 1024 * 1024; // 30 MB
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
@@ -136,6 +138,76 @@ export async function processImageForPreview(formData: FormData) {
   }
 }
 
+async function processAndUploadIndividually(jobId: string, files: File[], settings: OptimizationSettings) {
+    const publicUrls: string[] = [];
+    const token = await getPostimagesToken();
+    const session = crypto.randomBytes(16).toString('hex');
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        jobStore.set(jobId, {
+            status: 'processing', progress: i, total: files.length,
+            info: `Optimizing ${file.name}...`
+        });
+        
+        const fileBuffer = Buffer.from(await file.arrayBuffer());
+        const processedBuffer = await optimizeImage(fileBuffer, settings);
+
+        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+        const newName = `${originalName}.${settings.format}`;
+        
+        jobStore.set(jobId, {
+            status: 'uploading', progress: i, total: files.length,
+            info: `Uploading ${newName}...`
+        });
+        
+        const form = new FormData();
+        form.append('token', token);
+        form.append('upload_session', session);
+        form.append('file', processedBuffer, newName);
+        form.append('numfiles', '1');
+
+        const uploadResponse = await axios.post(POSTIMAGES_ENDPOINT, form, {
+            headers: form.getHeaders(),
+            maxContentLength: Infinity, maxBodyLength: Infinity,
+        });
+
+        if (uploadResponse.data.status !== 'OK') {
+            throw new Error(`Postimages upload failed for ${newName}: ${uploadResponse.data.error || 'Unknown error'}`);
+        }
+        publicUrls.push(uploadResponse.data.url);
+    }
+    
+    return publicUrls;
+}
+
+async function processAndZip(jobId: string, files: File[], settings: OptimizationSettings): Promise<string> {
+    const zip = new JSZip();
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        jobStore.set(jobId, {
+            status: 'processing', progress: i, total: files.length,
+            info: `Optimizing ${file.name}...`
+        });
+        
+        const fileBuffer = Buffer.from(await file.arrayBuffer());
+        const processedBuffer = await optimizeImage(fileBuffer, settings);
+
+        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+        const newName = `${originalName}.${settings.format}`;
+        zip.file(newName, processedBuffer);
+    }
+    
+    jobStore.set(jobId, {
+        status: 'uploading', progress: files.length, total: files.length,
+        info: `Compressing into zip...`
+    });
+    
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    return `data:application/zip;base64,${zipBuffer.toString('base64')}`;
+}
+
 export async function createProcessImagesJob(
   formData: FormData,
 ): Promise<{ jobId?: string; error?: string }> {
@@ -153,7 +225,6 @@ export async function createProcessImagesJob(
     if (files.length === 0 || !settingsString) {
         return { error: 'Missing files or settings.' };
     }
-
     if (files.length > BATCH_LIMIT) {
         return { error: `Batch limit exceeded. Please upload a maximum of ${BATCH_LIMIT} files.` };
     }
@@ -169,87 +240,59 @@ export async function createProcessImagesJob(
     const jobId = nanoid();
     console.log(`Creating job ${jobId} for ${files.length} files from IP: ${ip}`);
 
-
-    jobStore.set(jobId, {
-        status: 'processing',
-        progress: 0,
-        total: files.length,
-    });
+    jobStore.set(jobId, { status: 'processing', progress: 0, total: files.length });
 
     // Process asynchronously without awaiting
     (async () => {
         try {
-          const startTime = Date.now();
-          const publicUrls: string[] = [];
+            const startTime = Date.now();
+            let useZipFallback = false;
+
+            // First, check if any file will be oversized
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                jobStore.set(jobId, {
+                    status: 'processing', progress: i, total: files.length,
+                    info: `Analyzing ${file.name}...`
+                });
+                const fileBuffer = Buffer.from(await file.arrayBuffer());
+                const processedBuffer = await optimizeImage(fileBuffer, settings);
+                if (processedBuffer.byteLength > POSTIMAGE_SIZE_LIMIT_BYTES) {
+                    useZipFallback = true;
+                    console.log(`File ${file.name} exceeds 30MB after optimization. Using zip fallback for job ${jobId}.`);
+                    break;
+                }
+            }
+            
+            let result: { type: 'urls' | 'zip'; data: string[] | string };
+
+            if (useZipFallback) {
+                const zipDataUrl = await processAndZip(jobId, files, settings);
+                result = { type: 'zip', data: zipDataUrl };
+            } else {
+                const urls = await processAndUploadIndividually(jobId, files, settings);
+                result = { type: 'urls', data: urls };
+            }
           
-          const token = await getPostimagesToken();
-          const session = crypto.randomBytes(16).toString('hex');
-
-          for (let i = 0; i < files.length; i++) {
-              const file = files[i];
-              
-              jobStore.set(jobId, {
-                status: 'processing',
-                progress: i,
+            jobStore.set(jobId, {
+                status: 'completed',
+                progress: files.length,
                 total: files.length,
-                info: `Optimizing ${file.name}...`
-              });
-              
-              const fileBuffer = Buffer.from(await file.arrayBuffer());
-              
-              const processedBuffer = await optimizeImage(
-                fileBuffer,
-                settings,
-              );
+                result: result,
+            });
 
-              const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-              const newName = `${originalName}.${settings.format}`;
-              
-              jobStore.set(jobId, {
-                status: 'uploading',
-                progress: i,
-                total: files.length,
-                info: `Uploading ${newName}...`
-              });
-              
-              // Upload to Postimages
-              const form = new FormData();
-              form.append('token', token);
-              form.append('upload_session', session);
-              form.append('file', processedBuffer, newName);
-              form.append('numfiles', '1');
-
-              const uploadResponse = await axios.post(POSTIMAGES_ENDPOINT, form, {
-                headers: form.getHeaders(),
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity,
-              });
-
-              if (uploadResponse.data.status !== 'OK') {
-                  throw new Error(`Postimages upload failed for ${newName}: ${uploadResponse.data.error || 'Unknown error'}`);
-              }
-              publicUrls.push(uploadResponse.data.url);
-          }
-          
-          jobStore.set(jobId, {
-              status: 'completed',
-              progress: files.length,
-              total: files.length,
-              result: publicUrls,
-          });
-
-          const duration = Date.now() - startTime;
-          console.log(`Job ${jobId} completed successfully in ${duration}ms. ${publicUrls.length} URLs generated.`);
+            const duration = Date.now() - startTime;
+            console.log(`Job ${jobId} completed successfully in ${duration}ms.`);
 
         } catch (error) {
-          console.error(`Job ${jobId} failed during processing:`, error);
-          const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-          jobStore.set(jobId, {
-              status: 'failed',
-              progress: jobStore.get(jobId)?.progress || 0,
-              total: files.length,
-              error: `Failed to process images: ${errorMessage}`,
-          });
+            console.error(`Job ${jobId} failed during processing:`, error);
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+            jobStore.set(jobId, {
+                status: 'failed',
+                progress: jobStore.get(jobId)?.progress || 0,
+                total: files.length,
+                error: `Failed to process images: ${errorMessage}`,
+            });
         }
     })();
 
