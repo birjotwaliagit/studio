@@ -114,11 +114,11 @@ export async function processImageForPreview(formData: FormData) {
 
     const processedBuffer = await optimizeImage(fileBuffer, settings);
     
-    // Return the raw buffer and mime type
+    // Return the base64 encoded buffer and mime type for client-side blob creation
     return {
       success: true,
       data: {
-        buffer: processedBuffer,
+        buffer: processedBuffer.toString('base64'),
         mimeType: `image/${settings.format}`,
         size: processedBuffer.byteLength,
       },
@@ -223,7 +223,8 @@ export async function createProcessImagesJob(
 
     return { jobId };
 
-  } catch (error) {
+  } catch (error)
+ {
     console.error('Error creating image processing job:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return { error: `Failed to create job: ${errorMessage}` };

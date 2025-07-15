@@ -48,6 +48,25 @@ function PreviewPanel({ title, imageSrc, width, height, size, isLoading }: { tit
   );
 }
 
+// Helper to convert base64 to a Blob
+const b64toBlob = (b64Data: string, contentType = '', sliceSize = 512) => {
+  const byteCharacters = atob(b64Data);
+  const byteArrays = [];
+
+  for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+    const slice = byteCharacters.slice(offset, offset + sliceSize);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    byteArrays.push(byteArray);
+  }
+
+  return new Blob(byteArrays, { type: contentType });
+};
+
+
 export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
   const [optimizedData, setOptimizedData] = useState<{ url: string; size: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,7 +107,7 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
             URL.revokeObjectURL(optimizedUrlRef.current);
           }
 
-          const blob = new Blob([result.data.buffer], { type: result.data.mimeType });
+          const blob = b64toBlob(result.data.buffer, result.data.mimeType);
           const url = URL.createObjectURL(blob);
           optimizedUrlRef.current = url;
           setOptimizedData({
