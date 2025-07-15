@@ -8,10 +8,17 @@ import { FileList } from './file-list';
 import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
-import { Download, ImageIcon, Loader2, CheckCircle2, AlertTriangle, FileArchive } from 'lucide-react';
+import { Download, ImageIcon, Loader2, CheckCircle2, AlertTriangle, FileArchive, Info } from 'lucide-react';
 import { createProcessImagesJob, getJobStatus } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+
 
 export function ImageOptix() {
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -250,6 +257,25 @@ export function ImageOptix() {
           activeFile={activeFile}
           disabled={files.length === 0 || isProcessing}
         />
+
+        <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="limitations">
+                <AccordionTrigger>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Info className="size-4" />
+                        Limitations
+                    </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                    <ul className="text-xs text-muted-foreground space-y-2 list-disc pl-4">
+                        <li>Max **50 images** per batch.</li>
+                        <li>Max **10 jobs** per minute per user.</li>
+                        <li>Large files or batches may fail due to server processing time and memory limits.</li>
+                    </ul>
+                </AccordionContent>
+            </AccordionItem>
+        </Accordion>
+
         <div className="mt-auto pt-4">
           {isProcessing && (job?.status === 'processing' || job?.status === 'uploading') && job.total > 0 && (
             <div className="mb-2">
