@@ -8,19 +8,11 @@ import { FileList } from './file-list';
 import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
-import { Download, ImageIcon, Loader2 } from 'lucide-react';
+import { Download, ImageIcon, Loader2, Link as LinkIcon, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { createProcessImagesJob, getJobStatus } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
-
-function downloadFile(url: string, filename: string) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
+import { Input } from '../ui/input';
 
 export function ImageOptix() {
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -39,12 +31,12 @@ export function ImageOptix() {
 
   // Poll for job status
   useEffect(() => {
-    if (job?.status !== 'processing' || !job.jobId) {
-      if (job?.status !== 'starting') {
-        setIsProcessing(false);
-      }
-      return;
-    };
+    if (!job?.jobId || (job.status !== 'processing' && job.status !== 'uploading')) {
+        if (job?.status !== 'starting') {
+            setIsProcessing(false);
+        }
+        return;
+    }
 
     const intervalId = setInterval(async () => {
       if (job.jobId) {
@@ -53,12 +45,10 @@ export function ImageOptix() {
           setJob(currentJob);
 
           if (currentJob.status === 'completed' && currentJob.result) {
-            downloadFile(currentJob.result, `ImageOptix-${Date.now()}.zip`);
             toast({
-              title: "Processing Complete",
-              description: "Your files have been downloaded.",
+              title: "Upload Complete",
+              description: "Your public link is ready.",
             });
-            setJob(null);
           } else if (currentJob.status === 'failed') {
             toast({
               variant: "destructive",
@@ -96,6 +86,8 @@ export function ImageOptix() {
       const newFiles = currentFiles.filter(f => f.id !== idToRemove);
       if (newFiles.length === 0) {
         setActiveIndex(null);
+        setJob(null);
+        setIsProcessing(false);
       } else if (activeIndex !== null) {
         const currentSelectedFile = currentFiles[activeIndex];
         if (currentSelectedFile.id === idToRemove) {
@@ -117,6 +109,8 @@ export function ImageOptix() {
     files.forEach(file => URL.revokeObjectURL(file.previewUrl));
     setFiles([]);
     setActiveIndex(null);
+    setJob(null);
+    setIsProcessing(false);
   }, [files]);
 
   // Clean up object URLs on unmount
@@ -126,7 +120,7 @@ export function ImageOptix() {
     };
   }, [files]);
 
-  const handleBatchProcessAndDownload = async () => {
+  const handleBatchProcess = async () => {
     if (files.length === 0) return;
 
     setIsProcessing(true);
@@ -167,8 +161,8 @@ export function ImageOptix() {
     if (!isProcessing || !job) {
       return (
         <>
-          <Download className="mr-2 h-5 w-5" />
-          Process & Download All ({files.length})
+          <LinkIcon className="mr-2 h-5 w-5" />
+          Process & Get Link ({files.length})
         </>
       );
     }
@@ -188,14 +182,55 @@ export function ImageOptix() {
             Processing... ({job.progress}/{job.total})
           </>
         );
+      case 'uploading':
+        return (
+          <>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Uploading to Postimages.org...
+          </>
+        );
       default:
         return (
           <>
-            <Download className="mr-2 h-5 w-5" />
-            Process & Download All ({files.length})
+            <LinkIcon className="mr-2 h-5 w-5" />
+            Process & Get Link ({files.length})
           </>
         );
     }
+  }
+
+  const renderJobResult = () => {
+      if (!job) return null;
+
+      if (job.status === 'completed' && job.result) {
+          return (
+              <div className="mt-4 p-4 border rounded-lg bg-green-500/10 text-green-700 dark:text-green-300">
+                  <div className="flex items-center mb-2">
+                      <CheckCircle2 className="mr-2 h-5 w-5" />
+                      <h3 className="font-semibold">Upload Complete!</h3>
+                  </div>
+                  <p className="text-sm mb-3">Your public link is ready. Anyone with the link can view the file.</p>
+                  <div className="flex items-center gap-2">
+                      <Input readOnly value={job.result} className="bg-background"/>
+                      <Button onClick={() => navigator.clipboard.writeText(job.result || '')}>Copy</Button>
+                  </div>
+              </div>
+          )
+      }
+
+      if (job.status === 'failed') {
+          return (
+            <div className="mt-4 p-4 border rounded-lg bg-destructive/10 text-destructive dark:text-red-400">
+                <div className="flex items-center mb-2">
+                    <AlertTriangle className="mr-2 h-5 w-5" />
+                    <h3 className="font-semibold">Job Failed</h3>
+                </div>
+                <p className="text-sm">{job.error || "An unknown error occurred."}</p>
+            </div>
+          )
+      }
+
+      return null;
   }
 
   return (
@@ -221,19 +256,20 @@ export function ImageOptix() {
           disabled={files.length === 0 || isProcessing}
         />
         <div className="mt-auto pt-4">
-          {isProcessing && job?.status === 'processing' && job.total > 0 && (
+          {isProcessing && (job?.status === 'processing' || job?.status === 'uploading') && job.total > 0 && (
             <div className="mb-2">
-              <Progress value={(job.progress / job.total) * 100} className="w-full" />
+              <Progress value={job.status === 'uploading' ? 100 : (job.progress / job.total) * 100} className="w-full" />
             </div>
           )}
           <Button 
             size="lg" 
             className="w-full"
-            onClick={handleBatchProcessAndDownload}
+            onClick={handleBatchProcess}
             disabled={files.length === 0 || isProcessing}
           >
             {getButtonContent()}
           </Button>
+          {renderJobResult()}
         </div>
       </aside>
       <main className="flex items-center justify-center p-8 bg-background overflow-hidden">

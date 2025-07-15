@@ -20,13 +20,13 @@ export interface ImageFile {
   optimizedSize?: number;
 }
 
-export type JobStatus = 'starting' | 'processing' | 'completed' | 'failed';
+export type JobStatus = 'starting' | 'processing' | 'uploading' | 'completed' | 'failed';
 
 export type Job = {
   jobId?: string;
   status: JobStatus;
   progress: number;
   total: number;
-  result?: string; // data URL for the zip
+  result?: string; // data URL for the zip, or public URL from postimages
   error?: string;
 }

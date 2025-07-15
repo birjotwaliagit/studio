@@ -8,12 +8,16 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rate-limiter';
 import { headers } from 'next/headers';
+import axios from 'axios';
+import FormData from 'form-data';
+import crypto from 'crypto';
 
 
 // In-memory store for jobs. In a real app, use a database or a service like Redis.
 const jobStore = new Map<string, Job>();
 
 const BATCH_LIMIT = 50;
+const POSTIMAGES_ENDPOINT = "https://postimg.cc/json";
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
@@ -23,6 +27,22 @@ const optimizationSettingsSchema = z.object({
   height: z.number().min(1).int().nullable(),
 });
 
+// Scrape a valid token from postimages.org. In a real app, this should be cached.
+async function getPostimagesToken(): Promise<string> {
+    try {
+        const response = await axios.get('https://postimages.org', {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const tokenMatch = response.data.match(/token['"]?\s*:\s*['"](\w{32})/);
+        if (tokenMatch && tokenMatch[1]) {
+            return tokenMatch[1];
+        }
+        throw new Error('Could not find postimages token');
+    } catch (error) {
+        console.error("Failed to fetch postimages token:", error);
+        throw new Error('Could not fetch postimages token');
+    }
+}
 
 async function optimizeImage(
   fileBuffer: Buffer, 
@@ -168,8 +188,8 @@ export async function createProcessImagesJob(
               const fileBuffer = Buffer.from(await file.arrayBuffer());
               
               const processedBuffer = await optimizeImage(
-              fileBuffer,
-              settings,
+                fileBuffer,
+                settings,
               );
 
               const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
@@ -179,23 +199,51 @@ export async function createProcessImagesJob(
 
               // Update progress
               jobStore.set(jobId, {
-              status: 'processing',
-              progress: i + 1,
-              total: files.length,
+                status: 'processing',
+                progress: i + 1,
+                total: files.length,
               });
           }
 
           const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-          const zipBase64 = zipBuffer.toString('base64');
+          
+          // Switch to uploading status
+          jobStore.set(jobId, {
+            status: 'uploading',
+            progress: files.length,
+            total: files.length,
+          });
+
+          // Upload to Postimages
+          console.log(`Job ${jobId}: Uploading to Postimages.org...`);
+          const form = new FormData();
+          const token = await getPostimagesToken();
+          const session = crypto.randomBytes(16).toString('hex');
+          
+          form.append('token', token);
+          form.append('upload_session', session);
+          form.append('file', zipBuffer, `ImageOptix-batch-${jobId}.zip`);
+          form.append('numfiles', '1');
+
+          const uploadResponse = await axios.post(POSTIMAGES_ENDPOINT, form, {
+            headers: form.getHeaders(),
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+          });
+
+          if (uploadResponse.data.status !== 'OK') {
+              throw new Error(`Postimages upload failed: ${uploadResponse.data.error || 'Unknown error'}`);
+          }
+          const publicUrl = uploadResponse.data.url;
           
           jobStore.set(jobId, {
               status: 'completed',
               progress: files.length,
               total: files.length,
-              result: `data:application/zip;base64,${zipBase64}`,
+              result: publicUrl,
           });
           const duration = Date.now() - startTime;
-          console.log(`Job ${jobId} completed successfully in ${duration}ms.`);
+          console.log(`Job ${jobId} completed successfully in ${duration}ms. Public URL: ${publicUrl}`);
 
         } catch (error) {
           console.error(`Job ${jobId} failed during processing:`, error);
