@@ -1,7 +1,7 @@
 
 'use server';
 
-import type { OptimizationSettings, Job } from '@/types';
+import type { OptimizationSettings, Job, JobResult } from '@/types';
 import sharp from 'sharp';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
@@ -27,7 +27,6 @@ async function optimizeImage(
   fileBuffer: Buffer, 
   settings: OptimizationSettings
 ): Promise<Buffer> {
-  // For animated GIFs, we need to tell sharp to handle all frames.
   const isAnimated = settings.format === 'gif';
   let image = sharp(fileBuffer, { animated: isAnimated });
   
@@ -39,7 +38,6 @@ async function optimizeImage(
   let targetHeight = originalHeight;
   const aspectRatio = originalWidth / originalHeight;
 
-  // Respect aspect ratio if only one dimension is provided
   if (settings.width && !settings.height) {
     targetWidth = settings.width;
     targetHeight = Math.round(settings.width / aspectRatio);
@@ -53,14 +51,13 @@ async function optimizeImage(
   
   if (targetWidth !== originalWidth || targetHeight !== originalHeight) {
       image = image.resize(targetWidth, targetHeight, {
-        fit: 'inside', // Prevents upscaling by default
+        fit: 'inside',
         withoutEnlargement: true,
       });
   }
 
   const { format, quality } = settings;
   
-  // Chain the format conversion. Apply quality only where applicable.
   switch (format) {
     case 'jpeg':
       image.jpeg({ quality });
@@ -75,7 +72,7 @@ async function optimizeImage(
        image.tiff({ quality });
        break;
     case 'png':
-      image.png(); // No quality setting for lossless PNG
+      image.png();
       break;
     case 'gif':
       image.gif();
@@ -84,7 +81,6 @@ async function optimizeImage(
        image.bmp();
        break;
     default:
-      // This should not be reached due to Zod validation
       throw new Error(`Unsupported format: ${format}`);
   }
   
@@ -114,7 +110,6 @@ export async function processImageForPreview(formData: FormData) {
 
     const processedBuffer = await optimizeImage(fileBuffer, settings);
     
-    // Return the base64 encoded buffer and mime type for client-side blob creation
     return {
       success: true,
       data: {
@@ -129,32 +124,6 @@ export async function processImageForPreview(formData: FormData) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return { success: false, error: `Failed to process image: ${errorMessage}` };
   }
-}
-
-async function processAndZip(jobId: string, files: File[], settings: OptimizationSettings): Promise<string> {
-    const zip = new JSZip();
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        jobStore.set(jobId, {
-            status: 'processing', progress: i, total: files.length,
-            info: `Optimizing ${file.name}...`
-        });
-        
-        const fileBuffer = Buffer.from(await file.arrayBuffer());
-        const processedBuffer = await optimizeImage(fileBuffer, settings);
-
-        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-        const newName = `${originalName}.${settings.format}`;
-        zip.file(newName, processedBuffer);
-    }
-    
-    jobStore.set(jobId, {
-        status: 'processing', progress: files.length, total: files.length,
-        info: `Compressing into zip...`
-    });
-    
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    return `data:application/zip;base64,${zipBuffer.toString('base64')}`;
 }
 
 export async function createProcessImagesJob(
@@ -195,10 +164,53 @@ export async function createProcessImagesJob(
     (async () => {
         try {
             const startTime = Date.now();
+            let result: JobResult;
+
+            if (files.length === 1) {
+                const file = files[0];
+                jobStore.set(jobId, {
+                    status: 'processing', progress: 0, total: 1,
+                    info: `Optimizing ${file.name}...`
+                });
+
+                const fileBuffer = Buffer.from(await file.arrayBuffer());
+                const processedBuffer = await optimizeImage(fileBuffer, settings);
+
+                const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+                const newName = `${originalName}.${settings.format}`;
+                const dataUrl = `data:image/${settings.format};base64,${processedBuffer.toString('base64')}`;
+                
+                result = { type: 'file', data: dataUrl, filename: newName };
+
+                jobStore.set(jobId, { status: 'processing', progress: 1, total: 1 });
+
+            } else {
+                const zip = new JSZip();
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    jobStore.set(jobId, {
+                        status: 'processing', progress: i, total: files.length,
+                        info: `Optimizing ${file.name}...`
+                    });
+                    
+                    const fileBuffer = Buffer.from(await file.arrayBuffer());
+                    const processedBuffer = await optimizeImage(fileBuffer, settings);
             
-            const zipDataUrl = await processAndZip(jobId, files, settings);
-            const result: { type: 'zip'; data: string } = { type: 'zip', data: zipDataUrl };
-          
+                    const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+                    const newName = `${originalName}.${settings.format}`;
+                    zip.file(newName, processedBuffer);
+                }
+                
+                jobStore.set(jobId, {
+                    status: 'processing', progress: files.length, total: files.length,
+                    info: `Compressing into zip...`
+                });
+                
+                const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+                const zipDataUrl = `data:application/zip;base64,${zipBuffer.toString('base64')}`;
+                result = { type: 'zip', data: zipDataUrl, filename: 'optimized-images.zip' };
+            }
+
             jobStore.set(jobId, {
                 status: 'completed',
                 progress: files.length,
@@ -235,7 +247,6 @@ export async function getJobStatus(jobId: string): Promise<Job | null> {
   const job = jobStore.get(jobId);
   if (!job) return null;
 
-  // Clean up completed or failed jobs after some time to prevent memory leaks
   if (job.status === 'completed' || job.status === 'failed') {
     setTimeout(() => {
         jobStore.delete(jobId);

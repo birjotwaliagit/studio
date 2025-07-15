@@ -22,15 +22,18 @@ export interface ImageFile {
 
 export type JobStatus = 'starting' | 'processing' | 'uploading' | 'completed' | 'failed';
 
+export type JobResult = {
+  type: 'file' | 'zip';
+  data: string;
+  filename: string;
+};
+
 export type Job = {
   jobId?: string;
   status: JobStatus;
   progress: number;
   total: number;
-  result?: {
-    type: 'urls' | 'zip';
-    data: string[] | string;
-  };
+  result?: JobResult;
   error?: string;
   info?: string;
 }

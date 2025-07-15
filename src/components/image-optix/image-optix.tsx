@@ -193,29 +193,25 @@ export function ImageOptix() {
   }
   
   const renderJobResult = () => {
-      if (!job || job.status !== 'completed' || !job.result) return null;
+    if (!job || job.status !== 'completed' || !job.result) return null;
 
-      const { type, data } = job.result;
+    const { type, data, filename } = job.result;
 
-      if (type === 'zip' && typeof data === 'string') {
-        return (
-          <div className="mt-4 p-4 border rounded-lg bg-green-500/10 text-green-700 dark:text-green-300">
-              <div className="flex items-center mb-2">
-                  <CheckCircle2 className="mr-2 h-5 w-5" />
-                  <h3 className="font-semibold">Download Ready!</h3>
-              </div>
-              <p className="text-sm mb-3">Your optimized images have been compressed into a zip file.</p>
-              <Button asChild className="w-full">
-                <a href={data} download="optimized-images.zip">
-                  <FileArchive className="mr-2 h-5 w-5" />
-                  Download .zip file
+    return (
+        <div className="mt-4 p-4 border rounded-lg bg-green-500/10 text-green-700 dark:text-green-300">
+            <div className="flex items-center mb-2">
+                <CheckCircle2 className="mr-2 h-5 w-5" />
+                <h3 className="font-semibold">Download Ready!</h3>
+            </div>
+            <p className="text-sm mb-3">Your optimized image(s) are ready for download.</p>
+            <Button asChild className="w-full">
+                <a href={data} download={filename}>
+                    {type === 'zip' ? <FileArchive className="mr-2 h-5 w-5" /> : <Download className="mr-2 h-5 w-5" />}
+                    Download {filename}
                 </a>
-              </Button>
-          </div>
-        )
-      }
-
-      return null;
+            </Button>
+        </div>
+    );
   }
 
   const renderJobFailure = () => {
@@ -237,7 +233,7 @@ export function ImageOptix() {
       <aside className="flex flex-col border-r bg-card/20 text-card-foreground p-4 gap-4 overflow-y-auto">
         <div className="flex items-center gap-3 px-2">
             <ImageIcon className="size-7 text-primary" />
-            <h1 className="text-2xl font-bold">ImageOptix</h1>
+            <h1 className="text-2xl font-bold">ImageOptix by Birjot</h1>
         </div>
         <ImageUploader onFilesAdded={handleFilesAdded} disabled={isProcessing} />
         <FileList 
