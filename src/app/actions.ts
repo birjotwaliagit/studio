@@ -22,7 +22,7 @@ const POSTIMAGE_SIZE_LIMIT_BYTES = 30 * 1024 * 1024; // 30 MB
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
-  format: z.enum(['jpeg', 'png', 'webp', 'avif']),
+  format: z.enum(['jpeg', 'png', 'webp', 'avif', 'tiff', 'bmp', 'gif', 'heif']),
   quality: z.number().min(1).max(100).int(),
   width: z.number().min(1).int().nullable(),
   height: z.number().min(1).int().nullable(),
@@ -49,7 +49,7 @@ async function optimizeImage(
   fileBuffer: Buffer, 
   settings: OptimizationSettings
 ) {
-  let image = sharp(fileBuffer);
+  let image = sharp(fileBuffer, { animated: settings.format === 'gif' });
   
   const metadata = await image.metadata();
   const originalWidth = metadata.width || 1;
@@ -93,6 +93,18 @@ async function optimizeImage(
       break;
     case 'avif':
       processedBuffer = await image.avif({ quality }).toBuffer();
+      break;
+    case 'tiff':
+      processedBuffer = await image.tiff({ quality }).toBuffer();
+      break;
+    case 'bmp':
+      processedBuffer = await image.bmp().toBuffer();
+      break;
+    case 'gif':
+      processedBuffer = await image.gif().toBuffer();
+      break;
+    case 'heif':
+      processedBuffer = await image.heif({ quality }).toBuffer();
       break;
     default:
       // This should not be reached due to Zod validation

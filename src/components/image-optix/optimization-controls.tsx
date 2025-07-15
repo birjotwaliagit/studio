@@ -26,6 +26,8 @@ export function OptimizationControls({ settings, setSettings, activeFile, disabl
     setSettings(s => ({ ...s, [dimension]: numValue }));
   }
 
+  const isQualitySliderDisabled = ['png', 'bmp', 'gif'].includes(settings.format) || disabled;
+
   return (
     <Card className={cn(disabled && "opacity-50 pointer-events-none")}>
       <CardHeader className="flex-row items-center justify-between pb-4">
@@ -47,6 +49,10 @@ export function OptimizationControls({ settings, setSettings, activeFile, disabl
               <SelectItem value="webp">WEBP</SelectItem>
               <SelectItem value="jpeg">JPEG</SelectItem>
               <SelectItem value="png">PNG</SelectItem>
+              <SelectItem value="tiff">TIFF</SelectItem>
+              <SelectItem value="gif">GIF</SelectItem>
+              <SelectItem value="bmp">BMP</SelectItem>
+              <SelectItem value="heif">HEIF</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -63,7 +69,7 @@ export function OptimizationControls({ settings, setSettings, activeFile, disabl
             step={1}
             value={[settings.quality]}
             onValueChange={([value]) => setSettings(s => ({ ...s, quality: value }))}
-            disabled={settings.format === 'png' || disabled}
+            disabled={isQualitySliderDisabled}
           />
         </div>
         

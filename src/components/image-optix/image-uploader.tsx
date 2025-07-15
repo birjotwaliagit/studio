@@ -12,6 +12,8 @@ interface ImageUploaderProps {
   disabled: boolean;
 }
 
+const ACCEPTED_FILE_TYPES = 'image/jpeg,image/png,image/webp,image/avif,image/tiff,image/bmp,image/gif,image/svg+xml,image/heic,image/heif';
+
 export function ImageUploader({ onFilesAdded, disabled }: ImageUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const { toast } = useToast();
@@ -43,13 +45,14 @@ export function ImageUploader({ onFilesAdded, disabled }: ImageUploaderProps) {
   const handleFiles = useCallback(async (selectedFiles: FileList | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
 
-    const imageFiles = Array.from(selectedFiles).filter(file => file.type.startsWith('image/'));
-
+    const acceptedTypesArray = ACCEPTED_FILE_TYPES.split(',');
+    const imageFiles = Array.from(selectedFiles).filter(file => acceptedTypesArray.includes(file.type));
+    
     if (imageFiles.length !== selectedFiles.length) {
       toast({
         variant: "destructive",
-        title: "Invalid File Type",
-        description: "Only image files are accepted.",
+        title: "Unsupported File Type",
+        description: "Some files were not valid image types and were ignored.",
       });
     }
 
@@ -107,14 +110,14 @@ export function ImageUploader({ onFilesAdded, disabled }: ImageUploaderProps) {
         <p className="mb-1 text-sm text-muted-foreground">
           <span className="font-semibold text-primary">Click to upload</span> or drag and drop
         </p>
-        <p className="text-xs text-muted-foreground">PNG, JPG, WEBP, etc.</p>
+        <p className="text-xs text-muted-foreground">PNG, JPG, WEBP, SVG, GIF, etc.</p>
       </div>
       <input 
         id="file-upload" 
         type="file" 
         className="hidden" 
         multiple
-        accept="image/*"
+        accept={ACCEPTED_FILE_TYPES}
         onChange={(e) => handleFiles(e.target.files)} 
         disabled={disabled}
       />
