@@ -1,9 +1,13 @@
 
 'use server';
 
-import type { OptimizationSettings, ImageFile } from '@/types';
+import type { OptimizationSettings, ImageFile, Job } from '@/types';
 import sharp from 'sharp';
 import JSZip from 'jszip';
+import { nanoid } from 'nanoid';
+
+// In-memory store for jobs. In a real app, use a database or a service like Redis.
+const jobStore = new Map<string, Job>();
 
 async function optimizeImage(
   dataUrl: string, 
@@ -85,40 +89,77 @@ export async function processImageForPreview({
   }
 }
 
-export async function processImagesForZip(
+export async function createProcessImagesJob(
   files: ImageFile[],
   settings: OptimizationSettings
-) {
-  try {
-    const zip = new JSZip();
+): Promise<{ jobId: string }> {
+  const jobId = nanoid();
+  jobStore.set(jobId, {
+    status: 'processing',
+    progress: 0,
+    total: files.length,
+  });
 
-    for (const file of files) {
-      const processedBuffer = await optimizeImage(
-        file.dataUrl,
-        settings,
-        file.originalWidth,
-        file.originalHeight
-      );
+  // Process asynchronously without awaiting
+  (async () => {
+    try {
+      const zip = new JSZip();
 
-      const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-      const newName = `${originalName}.${settings.format}`;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const processedBuffer = await optimizeImage(
+          file.dataUrl,
+          settings,
+          file.originalWidth,
+          file.originalHeight
+        );
+
+        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+        const newName = `${originalName}.${settings.format}`;
+        
+        zip.file(newName, processedBuffer);
+
+        // Update progress
+        jobStore.set(jobId, {
+          status: 'processing',
+          progress: i + 1,
+          total: files.length,
+        });
+      }
+
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+      const zipBase64 = zipBuffer.toString('base64');
       
-      zip.file(newName, processedBuffer);
+      jobStore.set(jobId, {
+        status: 'completed',
+        progress: files.length,
+        total: files.length,
+        result: `data:application/zip;base64,${zipBase64}`,
+      });
+
+    } catch (error) {
+      console.error(`Job ${jobId} failed:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      jobStore.set(jobId, {
+        status: 'failed',
+        progress: jobStore.get(jobId)?.progress || 0,
+        total: files.length,
+        error: `Failed to process images: ${errorMessage}`,
+      });
     }
+  })();
 
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    const zipBase64 = zipBuffer.toString('base64');
-    
-    return {
-      success: true,
-      data: {
-        zipData: zipBase64,
-      },
-    };
+  return { jobId };
+}
 
-  } catch (error) {
-    console.error('Image processing for zip failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return { success: false, error: `Failed to process images: ${errorMessage}` };
+export async function getJobStatus(jobId: string): Promise<Job | null> {
+  const job = jobStore.get(jobId);
+  if (!job) return null;
+
+  // Clean up completed or failed jobs after some time to prevent memory leaks
+  if (job.status === 'completed' || job.status === 'failed') {
+    setTimeout(() => jobStore.delete(jobId), 60000); // Clean up after 1 minute
   }
+
+  return job;
 }
