@@ -74,14 +74,23 @@ export function ImageOptix() {
 
   const handleFilesAdded = useCallback((newFiles: ImageFile[]) => {
     const newFileIndex = files.length;
-    setFiles(f => [...f, ...newFiles]);
+    setFiles(f => {
+      const allFiles = [...f, ...newFiles];
+      // Clean up old object URLs
+      f.forEach(file => URL.revokeObjectURL(file.previewUrl));
+      return allFiles;
+    });
     if (activeIndex === null && newFiles.length > 0) {
       setActiveIndex(newFileIndex);
     }
-  }, [activeIndex, files.length]);
+  }, [activeIndex, files]);
 
   const handleRemoveFile = useCallback((idToRemove: string) => {
     setFiles(currentFiles => {
+      const fileToRemove = currentFiles.find(f => f.id === idToRemove);
+      if (fileToRemove) {
+        URL.revokeObjectURL(fileToRemove.previewUrl);
+      }
       const newFiles = currentFiles.filter(f => f.id !== idToRemove);
       if (newFiles.length === 0) {
         setActiveIndex(null);
@@ -103,9 +112,17 @@ export function ImageOptix() {
   }, []);
   
   const handleClearAll = useCallback(() => {
+    files.forEach(file => URL.revokeObjectURL(file.previewUrl));
     setFiles([]);
     setActiveIndex(null);
-  }, []);
+  }, [files]);
+
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      files.forEach(file => URL.revokeObjectURL(file.previewUrl));
+    };
+  }, [files]);
 
   const handleBatchProcessAndDownload = async () => {
     if (files.length === 0) return;
@@ -114,7 +131,11 @@ export function ImageOptix() {
     setJob({ status: 'starting', progress: 0, total: files.length });
 
     try {
-      const { jobId } = await createProcessImagesJob(files, settings);
+      const formData = new FormData();
+      files.forEach(f => formData.append('files', f.file));
+      formData.append('settings', JSON.stringify(settings));
+
+      const { jobId } = await createProcessImagesJob(formData);
       setJob({ jobId, status: 'processing', progress: 0, total: files.length });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to start job.";

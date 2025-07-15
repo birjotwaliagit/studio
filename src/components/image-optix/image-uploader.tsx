@@ -18,26 +18,25 @@ export function ImageUploader({ onFilesAdded, disabled }: ImageUploaderProps) {
 
   const processFile = (file: File): Promise<ImageFile> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          resolve({
-            id: crypto.randomUUID(),
-            file,
-            name: file.name,
-            size: file.size,
-            dataUrl,
-            originalWidth: img.width,
-            originalHeight: img.height,
-          });
-        };
-        img.onerror = reject;
-        img.src = dataUrl;
+      const previewUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        resolve({
+          id: crypto.randomUUID(),
+          file,
+          name: file.name,
+          size: file.size,
+          previewUrl: previewUrl,
+          originalWidth: img.width,
+          originalHeight: img.height,
+        });
+        // Note: We don't revoke the object URL here. It will be managed by the parent component.
       };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+      img.onerror = (err) => {
+        URL.revokeObjectURL(previewUrl);
+        reject(err);
+      };
+      img.src = previewUrl;
     });
   };
 
@@ -55,8 +54,16 @@ export function ImageUploader({ onFilesAdded, disabled }: ImageUploaderProps) {
     }
 
     if (imageFiles.length > 0) {
-      const processedFiles = await Promise.all(imageFiles.map(processFile));
-      onFilesAdded(processedFiles);
+      try {
+        const processedFiles = await Promise.all(imageFiles.map(processFile));
+        onFilesAdded(processedFiles);
+      } catch (error) {
+        toast({
+            variant: "destructive",
+            title: "File Error",
+            description: "Could not read one of the selected files.",
+        });
+      }
     }
   }, [onFilesAdded, toast]);
 

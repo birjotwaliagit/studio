@@ -50,11 +50,12 @@ export function FileList({ files, onSelectFile, onRemoveFile, onClearAll, active
               )}
             >
               <Image
-                src={file.dataUrl}
+                src={file.previewUrl}
                 alt={file.name}
                 width={40}
                 height={40}
                 className="rounded-md object-cover aspect-square"
+                unoptimized
               />
               <div className="ml-3 flex-1 overflow-hidden">
                 <p className="text-sm font-medium truncate">{file.name}</p>

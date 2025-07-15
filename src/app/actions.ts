@@ -10,14 +10,14 @@ import { nanoid } from 'nanoid';
 const jobStore = new Map<string, Job>();
 
 async function optimizeImage(
-  dataUrl: string, 
-  settings: OptimizationSettings, 
-  originalWidth: number, 
-  originalHeight: number
+  fileBuffer: Buffer, 
+  settings: OptimizationSettings
 ) {
-  const buffer = Buffer.from(dataUrl.split(',')[1], 'base64');
+  let image = sharp(fileBuffer);
   
-  let image = sharp(buffer);
+  const metadata = await image.metadata();
+  const originalWidth = metadata.width || 1;
+  const originalHeight = metadata.height || 1;
 
   let targetWidth = originalWidth;
   let targetHeight = originalHeight;
@@ -59,19 +59,19 @@ async function optimizeImage(
 }
 
 
-export async function processImageForPreview({
-  dataUrl,
-  settings,
-  originalWidth,
-  originalHeight,
-}: {
-  dataUrl: string;
-  settings: OptimizationSettings;
-  originalWidth: number;
-  originalHeight: number;
-}) {
+export async function processImageForPreview(formData: FormData) {
   try {
-    const processedBuffer = await optimizeImage(dataUrl, settings, originalWidth, originalHeight);
+    const file = formData.get('file') as File | null;
+    const settingsString = formData.get('settings') as string | null;
+
+    if (!file || !settingsString) {
+      throw new Error('Missing file or settings');
+    }
+
+    const settings: OptimizationSettings = JSON.parse(settingsString);
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+    const processedBuffer = await optimizeImage(fileBuffer, settings);
     const processedDataUrl = `data:image/${settings.format};base64,${processedBuffer.toString('base64')}`;
     
     return {
@@ -90,10 +90,13 @@ export async function processImageForPreview({
 }
 
 export async function createProcessImagesJob(
-  files: ImageFile[],
-  settings: OptimizationSettings
+  formData: FormData,
 ): Promise<{ jobId: string }> {
   const jobId = nanoid();
+  const files = formData.getAll('files') as File[];
+  const settingsString = formData.get('settings') as string;
+  const settings: OptimizationSettings = JSON.parse(settingsString);
+
   jobStore.set(jobId, {
     status: 'processing',
     progress: 0,
@@ -107,11 +110,11 @@ export async function createProcessImagesJob(
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const fileBuffer = Buffer.from(await file.arrayBuffer());
+        
         const processedBuffer = await optimizeImage(
-          file.dataUrl,
+          fileBuffer,
           settings,
-          file.originalWidth,
-          file.originalHeight
         );
 
         const originalName = file.name.substring(0, file.name.lastIndexOf('.'));

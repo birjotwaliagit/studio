@@ -1,3 +1,4 @@
+
 export type OptimizationFormat = 'jpeg' | 'png' | 'webp';
 
 export type OptimizationSettings = {
@@ -12,7 +13,7 @@ export interface ImageFile {
   file: File;
   name: string;
   size: number;
-  dataUrl: string;
+  previewUrl: string;
   originalWidth: number;
   originalHeight: number;
   optimizedDataUrl?: string;

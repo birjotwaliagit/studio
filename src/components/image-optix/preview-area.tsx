@@ -29,7 +29,7 @@ function PreviewPanel({ title, imageSrc, width, height, size, isLoading }: { tit
             height={400}
             className="object-contain max-w-full max-h-full h-auto w-auto"
             style={{ maxHeight: 'calc(100vh - 200px)'}}
-            unoptimized // Necessary for base64-encoded images in next/image
+            unoptimized // Necessary for base64-encoded and blob images in next/image
           />
         )}
         {!isLoading && !imageSrc && (
@@ -64,12 +64,11 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
 
     const process = async () => {
       try {
-        const result = await processImageForPreview({
-          dataUrl: activeFile.dataUrl,
-          settings,
-          originalWidth: activeFile.originalWidth,
-          originalHeight: activeFile.originalHeight,
-        });
+        const formData = new FormData();
+        formData.append('file', activeFile.file);
+        formData.append('settings', JSON.stringify(settings));
+
+        const result = await processImageForPreview(formData);
 
         if (isCancelled) return;
 
@@ -126,7 +125,7 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
         <div className="flex w-full items-start justify-center gap-6">
             <PreviewPanel 
               title="Original" 
-              imageSrc={activeFile.dataUrl} 
+              imageSrc={activeFile.previewUrl} 
               width={activeFile.originalWidth} 
               height={activeFile.originalHeight} 
               size={activeFile.size} 
