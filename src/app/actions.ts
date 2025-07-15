@@ -91,7 +91,9 @@ export async function processImageForPreview(formData: FormData) {
     const parsedSettings = optimizationSettingsSchema.safeParse(JSON.parse(settingsString));
 
     if (!parsedSettings.success) {
-      return { success: false, error: `Invalid settings: ${parsedSettings.error.flatten().fieldErrors}` };
+      const errorDetails = JSON.stringify(parsedSettings.error.flatten().fieldErrors);
+      console.error(`Invalid preview settings: ${errorDetails}`);
+      return { success: false, error: `Invalid settings: ${errorDetails}` };
     }
     const settings: OptimizationSettings = parsedSettings.data;
 
@@ -122,6 +124,7 @@ export async function createProcessImagesJob(
     const ip = headers().get('x-forwarded-for') ?? '127.0.0.1';
     const limitCheck = checkRateLimit(ip);
     if (!limitCheck.success) {
+      console.warn(`Rate limit exceeded for IP: ${ip}`);
       return { error: 'Too many requests. Please try again in a minute.' };
     }
     
@@ -139,11 +142,14 @@ export async function createProcessImagesJob(
     const parsedSettings = optimizationSettingsSchema.safeParse(JSON.parse(settingsString));
     if (!parsedSettings.success) {
         const fieldErrors = JSON.stringify(parsedSettings.error.flatten().fieldErrors);
+        console.error(`Invalid job settings: ${fieldErrors}`);
         return { error: `Invalid settings provided. ${fieldErrors}` };
     }
     const settings: OptimizationSettings = parsedSettings.data;
 
     const jobId = nanoid();
+    console.log(`Creating job ${jobId} for ${files.length} files from IP: ${ip}`);
+
 
     jobStore.set(jobId, {
         status: 'processing',
@@ -154,49 +160,52 @@ export async function createProcessImagesJob(
     // Process asynchronously without awaiting
     (async () => {
         try {
-        const zip = new JSZip();
+          const startTime = Date.now();
+          const zip = new JSZip();
 
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const fileBuffer = Buffer.from(await file.arrayBuffer());
-            
-            const processedBuffer = await optimizeImage(
-            fileBuffer,
-            settings,
-            );
+          for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              const fileBuffer = Buffer.from(await file.arrayBuffer());
+              
+              const processedBuffer = await optimizeImage(
+              fileBuffer,
+              settings,
+              );
 
-            const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-            const newName = `${originalName}.${settings.format}`;
-            
-            zip.file(newName, processedBuffer);
+              const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+              const newName = `${originalName}.${settings.format}`;
+              
+              zip.file(newName, processedBuffer);
 
-            // Update progress
-            jobStore.set(jobId, {
-            status: 'processing',
-            progress: i + 1,
-            total: files.length,
-            });
-        }
+              // Update progress
+              jobStore.set(jobId, {
+              status: 'processing',
+              progress: i + 1,
+              total: files.length,
+              });
+          }
 
-        const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-        const zipBase64 = zipBuffer.toString('base64');
-        
-        jobStore.set(jobId, {
-            status: 'completed',
-            progress: files.length,
-            total: files.length,
-            result: `data:application/zip;base64,${zipBase64}`,
-        });
+          const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+          const zipBase64 = zipBuffer.toString('base64');
+          
+          jobStore.set(jobId, {
+              status: 'completed',
+              progress: files.length,
+              total: files.length,
+              result: `data:application/zip;base64,${zipBase64}`,
+          });
+          const duration = Date.now() - startTime;
+          console.log(`Job ${jobId} completed successfully in ${duration}ms.`);
 
         } catch (error) {
-        console.error(`Job ${jobId} failed:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        jobStore.set(jobId, {
-            status: 'failed',
-            progress: jobStore.get(jobId)?.progress || 0,
-            total: files.length,
-            error: `Failed to process images: ${errorMessage}`,
-        });
+          console.error(`Job ${jobId} failed during processing:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+          jobStore.set(jobId, {
+              status: 'failed',
+              progress: jobStore.get(jobId)?.progress || 0,
+              total: files.length,
+              error: `Failed to process images: ${errorMessage}`,
+          });
         }
     })();
 
@@ -215,7 +224,10 @@ export async function getJobStatus(jobId: string): Promise<Job | null> {
 
   // Clean up completed or failed jobs after some time to prevent memory leaks
   if (job.status === 'completed' || job.status === 'failed') {
-    setTimeout(() => jobStore.delete(jobId), 60000); // Clean up after 1 minute
+    setTimeout(() => {
+        jobStore.delete(jobId);
+        console.log(`Cleaned up job ${jobId}.`);
+    }, 60000); // Clean up after 1 minute
   }
 
   return job;
