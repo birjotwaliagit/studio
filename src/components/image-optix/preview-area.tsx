@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { ImageFile, OptimizationSettings } from '@/types';
 import { Card } from '@/components/ui/card';
 import Image from 'next/image';
@@ -52,6 +52,16 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
   const [optimizedData, setOptimizedData] = useState<{ url: string; size: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const optimizedUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Clean up blob URL on unmount
+    return () => {
+      if (optimizedUrlRef.current) {
+        URL.revokeObjectURL(optimizedUrlRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeFile) {
@@ -73,9 +83,17 @@ export function PreviewArea({ activeFile, settings }: PreviewAreaProps) {
         if (isCancelled) return;
 
         if (result.success && result.data) {
+           // Revoke previous blob URL if it exists
+          if (optimizedUrlRef.current) {
+            URL.revokeObjectURL(optimizedUrlRef.current);
+          }
+
+          const blob = new Blob([result.data.buffer], { type: result.data.mimeType });
+          const url = URL.createObjectURL(blob);
+          optimizedUrlRef.current = url;
           setOptimizedData({
-            url: result.data.optimizedDataUrl,
-            size: result.data.optimizedSize,
+            url: url,
+            size: result.data.size,
           });
         } else {
           setOptimizedData(null);

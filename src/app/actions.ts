@@ -17,7 +17,7 @@ const BATCH_LIMIT = 50;
 
 // Zod schema for validation
 const optimizationSettingsSchema = z.object({
-  format: z.enum(['jpeg', 'png', 'webp', 'avif', 'tiff', 'bmp', 'gif', 'heif']),
+  format: z.enum(['jpeg', 'png', 'webp', 'avif', 'tiff', 'bmp', 'gif']),
   quality: z.number().min(1).max(100).int(),
   width: z.number().min(1).int().nullable(),
   height: z.number().min(1).int().nullable(),
@@ -71,9 +71,6 @@ async function optimizeImage(
     case 'avif':
       image.avif({ quality });
       break;
-    case 'heif':
-      image.heif({ quality });
-      break;
     case 'tiff':
        image.tiff({ quality });
        break;
@@ -116,13 +113,14 @@ export async function processImageForPreview(formData: FormData) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
 
     const processedBuffer = await optimizeImage(fileBuffer, settings);
-    const processedDataUrl = `data:image/${settings.format};base64,${processedBuffer.toString('base64')}`;
     
+    // Return the raw buffer and mime type
     return {
       success: true,
       data: {
-        optimizedDataUrl: processedDataUrl,
-        optimizedSize: processedBuffer.byteLength,
+        buffer: processedBuffer,
+        mimeType: `image/${settings.format}`,
+        size: processedBuffer.byteLength,
       },
     };
 
