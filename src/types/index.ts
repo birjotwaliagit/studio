@@ -27,6 +27,7 @@ export type Job = {
   status: JobStatus;
   progress: number;
   total: number;
-  result?: string; // data URL for the zip, or public URL from postimages
+  result?: string[]; // Array of public URLs from postimages
   error?: string;
+  info?: string;
 }

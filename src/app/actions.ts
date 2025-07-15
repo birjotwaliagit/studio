@@ -1,9 +1,8 @@
 
 'use server';
 
-import type { OptimizationSettings, ImageFile, Job } from '@/types';
+import type { OptimizationSettings, Job } from '@/types';
 import sharp from 'sharp';
-import JSZip from 'jszip';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rate-limiter';
@@ -181,10 +180,21 @@ export async function createProcessImagesJob(
     (async () => {
         try {
           const startTime = Date.now();
-          const zip = new JSZip();
+          const publicUrls: string[] = [];
+          
+          const token = await getPostimagesToken();
+          const session = crypto.randomBytes(16).toString('hex');
 
           for (let i = 0; i < files.length; i++) {
               const file = files[i];
+              
+              jobStore.set(jobId, {
+                status: 'processing',
+                progress: i,
+                total: files.length,
+                info: `Optimizing ${file.name}...`
+              });
+              
               const fileBuffer = Buffer.from(await file.arrayBuffer());
               
               const processedBuffer = await optimizeImage(
@@ -195,55 +205,41 @@ export async function createProcessImagesJob(
               const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
               const newName = `${originalName}.${settings.format}`;
               
-              zip.file(newName, processedBuffer);
-
-              // Update progress
               jobStore.set(jobId, {
-                status: 'processing',
-                progress: i + 1,
+                status: 'uploading',
+                progress: i,
                 total: files.length,
+                info: `Uploading ${newName}...`
               });
+              
+              // Upload to Postimages
+              const form = new FormData();
+              form.append('token', token);
+              form.append('upload_session', session);
+              form.append('file', processedBuffer, newName);
+              form.append('numfiles', '1');
+
+              const uploadResponse = await axios.post(POSTIMAGES_ENDPOINT, form, {
+                headers: form.getHeaders(),
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity,
+              });
+
+              if (uploadResponse.data.status !== 'OK') {
+                  throw new Error(`Postimages upload failed for ${newName}: ${uploadResponse.data.error || 'Unknown error'}`);
+              }
+              publicUrls.push(uploadResponse.data.url);
           }
-
-          const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-          
-          // Switch to uploading status
-          jobStore.set(jobId, {
-            status: 'uploading',
-            progress: files.length,
-            total: files.length,
-          });
-
-          // Upload to Postimages
-          console.log(`Job ${jobId}: Uploading to Postimages.org...`);
-          const form = new FormData();
-          const token = await getPostimagesToken();
-          const session = crypto.randomBytes(16).toString('hex');
-          
-          form.append('token', token);
-          form.append('upload_session', session);
-          form.append('file', zipBuffer, `ImageOptix-batch-${jobId}.zip`);
-          form.append('numfiles', '1');
-
-          const uploadResponse = await axios.post(POSTIMAGES_ENDPOINT, form, {
-            headers: form.getHeaders(),
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-          });
-
-          if (uploadResponse.data.status !== 'OK') {
-              throw new Error(`Postimages upload failed: ${uploadResponse.data.error || 'Unknown error'}`);
-          }
-          const publicUrl = uploadResponse.data.url;
           
           jobStore.set(jobId, {
               status: 'completed',
               progress: files.length,
               total: files.length,
-              result: publicUrl,
+              result: publicUrls,
           });
+
           const duration = Date.now() - startTime;
-          console.log(`Job ${jobId} completed successfully in ${duration}ms. Public URL: ${publicUrl}`);
+          console.log(`Job ${jobId} completed successfully in ${duration}ms. ${publicUrls.length} URLs generated.`);
 
         } catch (error) {
           console.error(`Job ${jobId} failed during processing:`, error);

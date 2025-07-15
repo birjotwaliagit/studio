@@ -8,11 +8,12 @@ import { FileList } from './file-list';
 import { OptimizationControls } from './optimization-controls';
 import { PreviewArea } from './preview-area';
 import { Button } from '@/components/ui/button';
-import { Download, ImageIcon, Loader2, Link as LinkIcon, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Download, ImageIcon, Loader2, Link as LinkIcon, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
 import { createProcessImagesJob, getJobStatus } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '../ui/input';
+import { ScrollArea } from '../ui/scroll-area';
 
 export function ImageOptix() {
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -47,7 +48,7 @@ export function ImageOptix() {
           if (currentJob.status === 'completed' && currentJob.result) {
             toast({
               title: "Upload Complete",
-              description: "Your public link is ready.",
+              description: "Your public links are ready.",
             });
           } else if (currentJob.status === 'failed') {
             toast({
@@ -59,7 +60,7 @@ export function ImageOptix() {
           }
         }
       }
-    }, 2000); // Poll every 2 seconds
+    }, 1000); // Poll every second
 
     return () => clearInterval(intervalId);
   }, [job, toast]);
@@ -162,7 +163,7 @@ export function ImageOptix() {
       return (
         <>
           <LinkIcon className="mr-2 h-5 w-5" />
-          Process & Get Link ({files.length})
+          Process & Get Links ({files.length})
         </>
       );
     }
@@ -176,27 +177,26 @@ export function ImageOptix() {
           </>
         );
       case 'processing':
-        return (
-          <>
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Processing... ({job.progress}/{job.total})
-          </>
-        );
       case 'uploading':
         return (
           <>
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Uploading to Postimages.org...
+            {job.info || `${job.status.charAt(0).toUpperCase() + job.status.slice(1)}...`} ({job.progress}/{job.total})
           </>
         );
       default:
         return (
           <>
             <LinkIcon className="mr-2 h-5 w-5" />
-            Process & Get Link ({files.length})
+            Process & Get Links ({files.length})
           </>
         );
     }
+  }
+  
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied to clipboard!" });
   }
 
   const renderJobResult = () => {
@@ -209,11 +209,19 @@ export function ImageOptix() {
                       <CheckCircle2 className="mr-2 h-5 w-5" />
                       <h3 className="font-semibold">Upload Complete!</h3>
                   </div>
-                  <p className="text-sm mb-3">Your public link is ready. Anyone with the link can view the file.</p>
-                  <div className="flex items-center gap-2">
-                      <Input readOnly value={job.result} className="bg-background"/>
-                      <Button onClick={() => navigator.clipboard.writeText(job.result || '')}>Copy</Button>
-                  </div>
+                  <p className="text-sm mb-3">Your public links are ready. Anyone with the link can view the file.</p>
+                  <ScrollArea className="h-40">
+                    <div className="space-y-2 pr-4">
+                      {job.result.map((url, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                            <Input readOnly value={url} className="bg-background text-xs h-8"/>
+                            <Button size="icon" className="h-8 w-8" onClick={() => handleCopy(url)}>
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
               </div>
           )
       }
@@ -258,7 +266,7 @@ export function ImageOptix() {
         <div className="mt-auto pt-4">
           {isProcessing && (job?.status === 'processing' || job?.status === 'uploading') && job.total > 0 && (
             <div className="mb-2">
-              <Progress value={job.status === 'uploading' ? 100 : (job.progress / job.total) * 100} className="w-full" />
+              <Progress value={(job.progress / job.total) * 100} className="w-full" />
             </div>
           )}
           <Button 
