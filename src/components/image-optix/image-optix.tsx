@@ -39,8 +39,10 @@ export function ImageOptix() {
 
   // Poll for job status
   useEffect(() => {
-    if (job?.status !== 'processing') {
-      setIsProcessing(false);
+    if (job?.status !== 'processing' || !job.jobId) {
+      if (job?.status !== 'starting') {
+        setIsProcessing(false);
+      }
       return;
     };
 
@@ -83,7 +85,7 @@ export function ImageOptix() {
     if (activeIndex === null && newFiles.length > 0) {
       setActiveIndex(newFileIndex);
     }
-  }, [activeIndex, files]);
+  }, [activeIndex, files.length]);
 
   const handleRemoveFile = useCallback((idToRemove: string) => {
     setFiles(currentFiles => {
@@ -100,7 +102,7 @@ export function ImageOptix() {
           setActiveIndex(newFiles.length > 0 ? 0 : null);
         } else {
           const newIndex = newFiles.findIndex(f => f.id === currentSelectedFile.id);
-          setActiveIndex(newIndex);
+          setActiveIndex(newIndex > -1 ? newIndex : 0);
         }
       }
       return newFiles;
@@ -135,7 +137,19 @@ export function ImageOptix() {
       files.forEach(f => formData.append('files', f.file));
       formData.append('settings', JSON.stringify(settings));
 
-      const { jobId } = await createProcessImagesJob(formData);
+      const { jobId, error } = await createProcessImagesJob(formData);
+      
+      if (error) {
+        toast({
+            variant: "destructive",
+            title: "Job Creation Failed",
+            description: error,
+        });
+        setIsProcessing(false);
+        setJob(null);
+        return;
+      }
+      
       setJob({ jobId, status: 'processing', progress: 0, total: files.length });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to start job.";
@@ -207,7 +221,7 @@ export function ImageOptix() {
           disabled={files.length === 0 || isProcessing}
         />
         <div className="mt-auto pt-4">
-          {isProcessing && job?.status === 'processing' && (
+          {isProcessing && job?.status === 'processing' && job.total > 0 && (
             <div className="mb-2">
               <Progress value={(job.progress / job.total) * 100} className="w-full" />
             </div>
