@@ -1,17 +1,13 @@
 
 "use client";
 
-import React, { useTransition } from 'react';
+import React from 'react';
 import type { OptimizationSettings, OptimizationFormat, ImageFile } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Loader2 } from 'lucide-react';
-import { getAiSuggestions } from '@/app/actions';
-import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface OptimizationControlsProps {
@@ -22,33 +18,7 @@ interface OptimizationControlsProps {
 }
 
 export function OptimizationControls({ settings, setSettings, activeFile, disabled }: OptimizationControlsProps) {
-  const [isAiLoading, startAiTransition] = useTransition();
-  const { toast } = useToast();
 
-  const handleAiSuggest = () => {
-    if (!activeFile) return;
-    startAiTransition(async () => {
-      const result = await getAiSuggestions({ photoDataUri: activeFile.dataUrl });
-      if (result.success && result.data) {
-        setSettings(s => ({
-          ...s,
-          format: result.data.format,
-          quality: result.data.quality,
-        }));
-        toast({
-          title: "AI Suggestions Applied",
-          description: `Format set to ${result.data.format.toUpperCase()} with ${result.data.quality}% quality.`,
-        });
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'AI Suggestion Failed',
-          description: result.error,
-        });
-      }
-    });
-  };
-  
   const handleDimensionChange = (dimension: 'width' | 'height', value: string) => {
     const numValue = value ? parseInt(value, 10) : null;
     if (numValue !== null && (isNaN(numValue) || numValue < 0)) return;
@@ -60,14 +30,6 @@ export function OptimizationControls({ settings, setSettings, activeFile, disabl
     <Card className={cn(disabled && "opacity-50 pointer-events-none")}>
       <CardHeader className="flex-row items-center justify-between pb-4">
         <CardTitle className="text-lg">Settings</CardTitle>
-        <Button size="sm" variant="outline" onClick={handleAiSuggest} disabled={!activeFile || isAiLoading || disabled}>
-          {isAiLoading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Sparkles className="mr-2 h-4 w-4 text-accent" />
-          )}
-          AI Suggest
-        </Button>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
