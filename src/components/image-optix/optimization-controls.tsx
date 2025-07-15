@@ -52,7 +52,6 @@ export function OptimizationControls({ settings, setSettings, activeFile, disabl
               <SelectItem value="tiff">TIFF</SelectItem>
               <SelectItem value="gif">GIF</SelectItem>
               <SelectItem value="bmp">BMP</SelectItem>
-              <SelectItem value="heif">HEIF</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -1,5 +1,5 @@
 
-export type OptimizationFormat = 'jpeg' | 'png' | 'webp' | 'avif' | 'tiff' | 'bmp' | 'gif' | 'heif';
+export type OptimizationFormat = 'jpeg' | 'png' | 'webp' | 'avif' | 'tiff' | 'bmp' | 'gif';
 
 export type OptimizationSettings = {
   format: OptimizationFormat;
